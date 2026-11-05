@@ -1,0 +1,78 @@
+#0. Install Packages
+install.packages("tidyverse")
+install.packages("janitor")
+install.packages ("stringr")
+
+
+
+#0.5 load packages
+library(janitor)
+library(tidyverse)
+library(readr)
+library(stringr)
+
+
+service_requests <- read_csv("311_Service_Requests_.csv") |> 
+  clean_names()
+
+
+requests_clean <- service_requests |> 
+  mutate(
+         created_date = as_date(mdy_hms(created_date)),
+         last_modified_date = as_date(mdy_hms(last_modified_date)),
+         closed_date = as_date(mdy_hms(closed_date)),
+         year = lubridate::year(created_date)
+  )
+
+requests_year <- requests_clean |> 
+  group_by(year) |> 
+  summarise(new_requests = n())
+
+
+VAB <- read_csv("311_Vacant_and_Abandoned_Buildings_Reported_-_2008-2018.csv", 
+                col_types = cols(`DATE SERVICE REQUEST WAS RECEIVED` = 
+                                   col_date(format = "%m/%d/%Y")))
+
+VAB_clean <- VAB |> 
+  clean_names() |> 
+  #renaming columns for ease of reading
+  rename(date_request_received = date_service_request_was_received,
+         vacant = is_the_building_currently_vacant_or_occupied,
+         vacancy_fire = is_the_building_vacant_due_to_fire,
+         open_boarded = is_building_open_or_boarded,
+         people_use = any_people_using_property_homeless_childen_gangs) |> 
+  select(date_request_received, open_boarded, vacant, vacancy_fire, people_use, ward,
+         community_area) #selecting appropriate columns for table
+
+#adding new column for only year when service request was received
+VAB_year <- VAB_clean |> 
+  filter(!is.na(date_request_received)) |> 
+  mutate(year = lubridate::year(date_request_received)) |> 
+  group_by(year) |> 
+  summarise(historical_requests = n(), .groups = "drop")
+
+full_request_list <-
+  full_join (VAB_year, requests_year, by = "year") |> 
+  mutate(
+    historical_requests = replace_na(historical_requests, 0),
+    new_requests = replace_na(new_requests, 0),
+    total_requests = historical_requests + new_requests
+  ) |> 
+  select(year, total_requests)
+
+Requests_line <- full_request_list |> 
+  ggplot(aes(x = year, y = total_requests)) +
+  geom_line(color = "#0072B2", linewidth = 1) +
+  geom_point(color = "#0072B2", size = 2) +
+  scale_x_continuous(breaks = seq(2008, 2026, by = 1)) +
+  scale_y_continuous(labels = scales::comma, limits = c(0, 16000)) +
+  labs(
+    title = "Placeholder",
+    subtitle = "placeholder",
+    x = "Year",
+    y = "Total Number of Requests Recieved",
+    caption = "Source: Placeholder"
+  ) +
+  theme_bw()
+
+print(Requests_line)
